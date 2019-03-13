@@ -128,36 +128,41 @@ def refine_match(threshold, truths, priors, variances, labels, loc_t, conf_t, id
         The matched indices corresponding to 1)location and 2)confidence preds.
     """
 
-    # jaccard index
-    if arm_loc is None:
-        overlaps = jaccard(truths, point_form(priors))
+    if truths.size(0) > 0:
+        # jaccard index
+        if arm_loc is None:
+            overlaps = jaccard(truths, point_form(priors))
+        else:
+            decode_arm = decode(arm_loc, priors=priors, variances=variances)
+            overlaps = jaccard(truths, decode_arm)
+        # (Bipartite Matching)
+        # [1,num_objects] best prior for each ground truth
+        best_prior_overlap, best_prior_idx = overlaps.max(1, keepdim=True)
+        # [1,num_priors] best ground truth for each prior
+        best_truth_overlap, best_truth_idx = overlaps.max(0, keepdim=True)
+        best_truth_idx.squeeze_(0)
+        best_truth_overlap.squeeze_(0)
+        best_prior_idx.squeeze_(1)
+        best_prior_overlap.squeeze_(1)
+        best_truth_overlap.index_fill_(0, best_prior_idx, 2)  # ensure best prior
+        # TODO refactor: index  best_prior_idx with long tensor
+        # ensure every gt matches with its prior of max overlap
+        for j in range(best_prior_idx.size(0)):
+            best_truth_idx[best_prior_idx[j]] = j
+        matches = truths[best_truth_idx]  # Shape: [num_priors,4]
+        if arm_loc is None:
+            conf = labels[best_truth_idx]  # Shape: [num_priors]
+            loc = encode(matches, priors, variances)
+        else:
+            conf = labels[best_truth_idx] + 1  # Shape: [num_priors]
+            loc = encode(matches, center_size(decode_arm), variances)
+        conf[best_truth_overlap < threshold] = 0  # label as background
+        loc_t[idx] = loc  # [num_priors,4] encoded offsets to learn
+        conf_t[idx] = conf  # [num_priors] top class label for each prior
     else:
-        decode_arm = decode(arm_loc, priors=priors, variances=variances)
-        overlaps = jaccard(truths, decode_arm)
-    # (Bipartite Matching)
-    # [1,num_objects] best prior for each ground truth
-    best_prior_overlap, best_prior_idx = overlaps.max(1, keepdim=True)
-    # [1,num_priors] best ground truth for each prior
-    best_truth_overlap, best_truth_idx = overlaps.max(0, keepdim=True)
-    best_truth_idx.squeeze_(0)
-    best_truth_overlap.squeeze_(0)
-    best_prior_idx.squeeze_(1)
-    best_prior_overlap.squeeze_(1)
-    best_truth_overlap.index_fill_(0, best_prior_idx, 2)  # ensure best prior
-    # TODO refactor: index  best_prior_idx with long tensor
-    # ensure every gt matches with its prior of max overlap
-    for j in range(best_prior_idx.size(0)):
-        best_truth_idx[best_prior_idx[j]] = j
-    matches = truths[best_truth_idx]          # Shape: [num_priors,4]
-    if arm_loc is None:
-        conf = labels[best_truth_idx]         # Shape: [num_priors]
-        loc = encode(matches, priors, variances)
-    else:
-        conf = labels[best_truth_idx] + 1     # Shape: [num_priors]
-        loc = encode(matches, center_size(decode_arm), variances)
-    conf[best_truth_overlap < threshold] = 0  # label as background
-    loc_t[idx] = loc    # [num_priors,4] encoded offsets to learn
-    conf_t[idx] = conf  # [num_priors] top class label for each prior
+        num_priors = priors.size(0)
+        loc_t[idx] = torch.zeros([num_priors, 4], dtype=torch.float)
+        conf_t[idx] = torch.zeros([num_priors], dtype=torch.float)
 
 def encode(matched, priors, variances):
     """Encode the variances from the priorbox layers into the ground truth boxes

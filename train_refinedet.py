@@ -73,7 +73,7 @@ sys.stdout = Logger(os.path.join(args.save_folder, 'log.txt'))
 
 def train():
     if args.dataset == 'COCO':
-        '''if args.dataset_root == VOC_ROOT:
+        if args.dataset_root == VOC_ROOT:
             if not os.path.exists(COCO_ROOT):
                 parser.error('Must specify dataset_root if specifying dataset')
             print("WARNING: Using default COCO dataset_root because " +
@@ -82,7 +82,7 @@ def train():
         cfg = coco
         dataset = COCODetection(root=args.dataset_root,
                                 transform=SSDAugmentation(cfg['min_dim'],
-                                                          MEANS))'''
+                                                          MEANS))
     elif args.dataset == 'VOC':
         '''if args.dataset_root == COCO_ROOT:
             parser.error('Must specify dataset if specifying dataset_root')'''
@@ -161,7 +161,7 @@ def train():
     data_loader = data.DataLoader(dataset, args.batch_size,
                                   num_workers=args.num_workers,
                                   shuffle=True, collate_fn=detection_collate,
-                                  pin_memory=True)
+                                  pin_memory=True, drop_last=True)
     # create batch iterator
     batch_iterator = iter(data_loader)
     for iteration in range(args.start_iter, cfg['max_iter']):
